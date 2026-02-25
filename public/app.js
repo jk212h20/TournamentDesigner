@@ -1894,13 +1894,6 @@ function printSchedule(id) {
     <h1>${sched.name}</h1>
     <div class="subtitle">Blind Schedule</div>
   </div>
-  <div class="stats-bar">
-    <div class="stat"><div class="stat-value">${playLevels.length}</div><div class="stat-label">Levels</div></div>
-    <div class="stat"><div class="stat-value">${formatTime(playMin)}</div><div class="stat-label">Play Time</div></div>
-    <div class="stat"><div class="stat-value">${breakLevels.length}</div><div class="stat-label">Breaks</div></div>
-    <div class="stat"><div class="stat-value">${formatTime(totalMin)}</div><div class="stat-label">Total</div></div>
-    <div class="stat"><div class="stat-value">${fmt(maxBB)}</div><div class="stat-label">Max BB</div></div>
-  </div>
   <table>
     <thead><tr><th>Lvl</th><th>Blinds</th><th>Duration</th><th>Start</th><th>End</th><th>Elapsed</th></tr></thead>
     <tbody>${rows}</tbody>
