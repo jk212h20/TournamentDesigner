@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Poker Blinds Tool</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav id="sidebar">
+    <div class="logo">♠ Poker Blinds</div>
+    <a href="#" class="nav-item active" data-page="inventory">
+      <span class="nav-icon">🎰</span> Chip Inventory
+    </a>
+    <a href="#" class="nav-item" data-page="stacks">
+      <span class="nav-icon">📊</span> Stack Designer
+    </a>
+    <a href="#" class="nav-item" data-page="blinds">
+      <span class="nav-icon">⏱</span> Blind Schedules
+    </a>
+    <a href="#" class="nav-item" data-page="tournaments">
+      <span class="nav-icon">🏆</span> Tournaments
+    </a>
+  </nav>
+
+  <main id="content">
+    <!-- Chip Inventory Page -->
+    <div id="page-inventory" class="page active">
+      <h1>Chip Inventory</h1>
+      <p class="subtitle">Manage your chip sets and see total available chips</p>
+      
+      <div class="section">
+        <h2>Your Chip Sets</h2>
+        <div id="chip-sets-list"></div>
+      </div>
+
+      <div class="section">
+        <h2>Total Chip Inventory</h2>
+        <div id="total-inventory"></div>
+      </div>
+    </div>
+
+    <!-- Stack Designer Page -->
+    <div id="page-stacks" class="page">
+      <h1>Starting Stack Designer</h1>
+      <p class="subtitle">Design starting stacks for your tournaments</p>
+      
+      <div class="section">
+        <div class="form-row">
+          <label>Stack Name</label>
+          <input type="text" id="stack-name" placeholder="e.g., Friday Night $1000 Stack">
+        </div>
+        <div class="stack-three-col">
+          <div class="stack-col">
+            <div class="stack-param">
+              <label>Entrants</label>
+              <input type="number" id="stack-entrants" value="30" min="1" max="100"
+                     onchange="updateStackSummary()" oninput="updateStackSummary()">
+            </div>
+            <h2>Starting Stack</h2>
+            <div id="stack-designer-chips"></div>
+            <div class="stack-col-total" id="start-col-total"></div>
+          </div>
+          <div class="stack-col">
+            <div class="stack-param">
+              <label>Rebuy 1 Count</label>
+              <input type="number" id="rebuy1-count" value="30" min="0" max="200"
+                     onchange="updateStackSummary()" oninput="updateStackSummary()">
+            </div>
+            <h2>🔄 Rebuy 1</h2>
+            <div id="rebuy1-designer-chips"></div>
+            <div class="stack-col-total" id="rebuy1-col-total"></div>
+          </div>
+          <div class="stack-col">
+            <div class="stack-param">
+              <label>Rebuy 2 Count</label>
+              <input type="number" id="rebuy2-count" value="120" min="0" max="200"
+                     onchange="updateStackSummary()" oninput="updateStackSummary()">
+            </div>
+            <h2>🔄 Rebuy 2</h2>
+            <div id="rebuy2-designer-chips"></div>
+            <div class="stack-col-total" id="rebuy2-col-total"></div>
+          </div>
+        </div>
+        <div id="stack-summary" class="summary-box"></div>
+        <div id="stack-remaining-inventory" class="summary-box"></div>
+        <div id="stack-visual" class="stack-visual-container"></div>
+        <button class="btn btn-primary" id="save-stack-btn">Save Stack Configuration</button>
+      </div>
+
+      <div class="section">
+        <h2>Saved Stacks</h2>
+        <div id="saved-stacks-list"></div>
+      </div>
+    </div>
+
+    <!-- Blind Schedules Page -->
+    <div id="page-blinds" class="page">
+      <h1>Blind Schedules</h1>
+      <p class="subtitle">Create and manage blind level structures</p>
+
+      <div class="section">
+        <h2>Create New Schedule</h2>
+        <div class="form-row">
+          <label>Schedule Name</label>
+          <input type="text" id="schedule-name" placeholder="e.g., 3-Hour Turbo">
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">
+          <div class="form-row" style="margin-bottom:0">
+            <label>Reference Starting Stack</label>
+            <select id="schedule-stack-ref">
+              <option value="">-- Select a stack to see BB counts --</option>
+            </select>
+          </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Default Round Length (min)</label>
+            <input type="number" id="default-round-length" value="20" min="1" max="120" style="max-width:80px">
+          </div>
+        </div>
+        <table class="levels-table" id="levels-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Small Blind</th>
+              <th>Big Blind</th>
+              <th>Ante</th>
+              <th>Duration</th>
+              <th>BB in Stack</th>
+              <th>Chip-Up?</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="levels-tbody"></tbody>
+        </table>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="add-level-btn">+ Add Level</button>
+          <button class="btn btn-secondary" id="add-break-btn">+ Add Break</button>
+          <button class="btn btn-primary" id="save-schedule-btn">Save Schedule</button>
+        </div>
+        <div id="schedule-summary" class="summary-box"></div>
+      </div>
+
+      <div class="section" id="predictor-section">
+        <h2>⏱ Game Length Predictor</h2>
+        <p style="color:var(--text-dim);font-size:0.85em;margin-bottom:12px">Estimates how long the tournament will run based on blind pressure. Select a reference stack above to enable.</p>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+          <div class="form-row" style="margin-bottom:0">
+            <label>Players</label>
+            <input type="number" id="pred-players" value="20" min="2" max="200" style="max-width:80px" oninput="renderPrediction()">
+          </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Rebuys (total expected)</label>
+            <input type="number" id="pred-rebuys" value="0" min="0" max="500" style="max-width:80px" oninput="renderPrediction()">
+          </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Rebuy Stack Value ($)</label>
+            <input type="number" id="pred-rebuy-value" value="0" min="0" style="max-width:100px" oninput="renderPrediction()">
+          </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Rebuy Through Level</label>
+            <input type="number" id="pred-rebuy-through" value="4" min="0" max="50" style="max-width:80px" oninput="renderPrediction()">
+          </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Hands/Hour (live ≈ 25)</label>
+            <input type="number" id="pred-hands-hr" value="25" min="10" max="60" style="max-width:80px" oninput="renderPrediction()">
+          </div>
+        </div>
+        <div id="prediction-output"></div>
+      </div>
+
+      <div class="section">
+        <h2>Saved Schedules</h2>
+        <div id="saved-schedules-list"></div>
+      </div>
+    </div>
+
+    <!-- Tournaments Page -->
+    <div id="page-tournaments" class="page">
+      <h1>Tournament Planner</h1>
+      <p class="subtitle">Combine stacks and schedules to plan your tournament</p>
+
+      <div class="section">
+        <h2>Create Tournament</h2>
+        <div class="form-row">
+          <label>Tournament Name</label>
+          <input type="text" id="tourney-name" placeholder="e.g., Saturday Night Poker">
+        </div>
+        <div class="form-row">
+          <label>Starting Stack</label>
+          <select id="tourney-stack"></select>
+        </div>
+        <div class="form-row">
+          <label>Blind Schedule</label>
+          <select id="tourney-schedule"></select>
+        </div>
+        <div class="form-row">
+          <label>Number of Players</label>
+          <input type="number" id="tourney-players" value="9" min="2" max="100">
+        </div>
+        
+        <div class="rebuy-section">
+          <h3 style="color: var(--gold); margin-bottom: 12px; font-size: 1em;">🔄 Rebuy Settings</h3>
+          <div class="form-row">
+            <label>
+              <input type="checkbox" id="tourney-rebuy-allowed"> Allow Rebuys
+            </label>
+          </div>
+          <div id="rebuy-fields" style="display:none">
+            <div class="form-row">
+              <label>Rebuy Stack (chips received)</label>
+              <select id="tourney-rebuy-stack"></select>
+            </div>
+            <div class="form-row">
+              <label>Rebuy Cost ($)</label>
+              <input type="number" id="tourney-rebuy-cost" value="20" min="0" step="5">
+            </div>
+            <div class="form-row">
+              <label>Max Rebuys Per Player</label>
+              <input type="number" id="tourney-rebuy-max" value="1" min="1" max="10">
+            </div>
+            <div class="form-row">
+              <label>Rebuys Allowed Through Level #</label>
+              <input type="number" id="tourney-rebuy-through" value="4" min="1" max="30">
+            </div>
+          </div>
+        </div>
+        
+        <button class="btn btn-primary" id="save-tourney-btn">Create Tournament</button>
+      </div>
+
+      <div class="section">
+        <h2>Saved Tournaments</h2>
+        <div id="saved-tournaments-list"></div>
+      </div>
+
+      <div class="section" id="tourney-detail-section" style="display:none">
+        <h2 id="tourney-detail-title">Tournament Details</h2>
+        <div id="tourney-detail-content"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

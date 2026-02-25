@@ -1,0 +1,5 @@
+node_modules/
+poker.db
+poker.db-shm
+poker.db-wal
+.DS_Store
