@@ -77,6 +77,9 @@ db.exec(`
 
 // Migrations for existing databases
 try {
+  db.exec(`ALTER TABLE blind_levels ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
+} catch(e) {}
+try {
   db.exec(`ALTER TABLE stack_config_chips ADD COLUMN stack_type TEXT NOT NULL DEFAULT 'starting'`);
 } catch(e) {}
 try {
@@ -93,6 +96,9 @@ try {
 } catch(e) {}
 try {
   db.exec(`ALTER TABLE tournaments ADD COLUMN rebuy_cost REAL NOT NULL DEFAULT 0`);
+} catch(e) {}
+try {
+  db.exec(`ALTER TABLE blind_levels ADD COLUMN after_round INTEGER NOT NULL DEFAULT 0`);
 } catch(e) {}
 
 // Chip color map based on SLOWPLAY sets

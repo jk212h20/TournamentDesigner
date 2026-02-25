@@ -686,7 +686,64 @@ function renderLevelsTable() {
   const tbody = $('#levels-tbody');
   const refStack = getRefStack();
   const stackValue = refStack ? refStack.chips.reduce((sum, c) => sum + c.denomination * c.quantity, 0) : null;
-  
+
+  // Pre-compute per-level average stacks using the same simulation as the predictor
+  // This accounts for busts (fewer players = higher avg stack) and rebuy chip injection timing
+  const levelAvgStacks = {};
+  if (stackValue) {
+    const players = parseInt($('#pred-players').value) || 20;
+    const totalRebuys = parseInt($('#pred-rebuys').value) || 0;
+    const rebuyValue = stackValue;
+    const rebuyThroughLevel = parseInt($('#pred-rebuy-through').value) || 4;
+    const handsPerHour = parseInt($('#pred-hands-hr').value) || 25;
+
+    const playLevelsForSim = currentLevels.filter(l => !l.is_break && isLevelAchievable(l, refStack) && l.big_blind > 0);
+    const rebuyWindowLevels = playLevelsForSim.filter(l => l.level_number <= rebuyThroughLevel);
+    const numRebuyWindowLevels = Math.max(rebuyWindowLevels.length, 1);
+    const chipsPerRebuyLevel = (totalRebuys * rebuyValue) / numRebuyWindowLevels;
+    const rebuysPerWindowLevel = totalRebuys / numRebuyWindowLevels;
+
+    let remainingPlayers = players;
+    let totalChipsInPlay = players * stackValue;
+    let rebuysRemaining = totalRebuys;
+
+    for (const lvl of currentLevels) {
+      if (lvl.is_break) continue;
+      if (!isLevelAchievable(lvl, refStack) || lvl.big_blind === 0) continue;
+      if (remainingPlayers <= 1) break;
+
+      const inRebuyWindow = lvl.level_number <= rebuyThroughLevel && rebuysRemaining > 0;
+      if (inRebuyWindow) {
+        totalChipsInPlay += chipsPerRebuyLevel;
+      }
+
+      const avgStack = totalChipsInPlay / remainingPlayers;
+      levelAvgStacks[lvl.level_number] = avgStack;
+
+      // Simulate eliminations (same model as predictor)
+      const orbit = lvl.small_blind + lvl.big_blind + (lvl.ante || 0);
+      const M = orbit > 0 ? avgStack / orbit : 999;
+      let elimRatePerHand;
+      if (M > 20) elimRatePerHand = 0.004;
+      else if (M > 10) elimRatePerHand = 0.010;
+      else if (M > 5) elimRatePerHand = 0.025;
+      else elimRatePerHand = 0.050;
+
+      const handsThisLevel = (lvl.duration_minutes / 60) * handsPerHour;
+      const survivalRate = Math.pow(1 - elimRatePerHand, handsThisLevel);
+      const rawElims = remainingPlayers * (1 - survivalRate);
+
+      let netElims = rawElims;
+      if (inRebuyWindow) {
+        const rebuysUsedThisLevel = Math.min(rebuysPerWindowLevel, rebuysRemaining, rawElims);
+        netElims = Math.max(0, rawElims - rebuysUsedThisLevel);
+        rebuysRemaining -= rebuysUsedThisLevel;
+      }
+
+      remainingPlayers = Math.max(1, remainingPlayers - netElims);
+    }
+  }
+
   let prevSmallestNeeded = null;
   let totalMinutes = 0;
   
@@ -694,18 +751,29 @@ function renderLevelsTable() {
     totalMinutes += lvl.duration_minutes;
     
     if (lvl.is_break) {
+      const playLevels = currentLevels.filter(l => !l.is_break);
+      const maxRound = playLevels.length;
+      const afterRound = lvl.after_round || 1;
+      const roundOptions = playLevels.map(pl => 
+        `<option value="${pl.level_number}" ${pl.level_number === afterRound ? 'selected' : ''}>Round ${pl.level_number}</option>`
+      ).join('');
       return `
         <tr class="break-row">
           <td colspan="2" style="text-align:center">☕ BREAK</td>
-          <td colspan="3"></td>
+          <td colspan="2" style="font-size:0.85em">
+            after <select onchange="updateBreakAfterRound(${i}, this.value)" style="padding:2px 4px;border-radius:4px;background:var(--bg);color:var(--text);border:1px solid var(--border)">${roundOptions}</select>
+          </td>
           <td>
             <input type="number" min="1" value="${lvl.duration_minutes}" 
                    onchange="updateLevel(${i}, 'duration_minutes', this.value)" style="max-width:60px"> min
           </td>
           <td></td>
-          <td><button class="btn btn-danger" onclick="removeLevel(${i})">✕</button></td>
-        </tr>
-      `;
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="insertLevel(${i})" title="Insert level above" style="padding:2px 7px;font-size:0.85em;margin-right:2px">⊕</button>
+          <button class="btn btn-danger" onclick="removeLevel(${i})">✕</button>
+        </td>
+      </tr>
+    `;
     }
     
     // Check if this level is achievable with the selected stack's chips
@@ -715,8 +783,9 @@ function renderLevelsTable() {
     
     let bbStr = '—';
     let bbClass = '';
-    if (stackValue && lvl.big_blind > 0 && achievable) {
-      const bbs = Math.floor(stackValue / lvl.big_blind);
+    if (stackValue && lvl.big_blind > 0 && achievable && levelAvgStacks[lvl.level_number] !== undefined) {
+      const avgStackForLevel = levelAvgStacks[lvl.level_number];
+      const bbs = Math.floor(avgStackForLevel / lvl.big_blind);
       bbClass = bbs >= 50 ? 'healthy' : bbs >= 20 ? 'medium' : 'short';
       bbStr = bbs + ' BB';
     }
@@ -735,7 +804,10 @@ function renderLevelsTable() {
                  onchange="updateLevel(${i}, 'duration_minutes', this.value)" style="max-width:60px"> min
         </td>
         <td><span class="bb-count ${bbClass}">${bbStr}</span></td>
-        <td><button class="btn btn-danger" onclick="removeLevel(${i})">✕</button></td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="insertLevel(${i})" title="Insert level above" style="padding:2px 7px;font-size:0.85em;margin-right:2px">⊕</button>
+          <button class="btn btn-danger" onclick="removeLevel(${i})">✕</button>
+        </td>
       </tr>
     `;
   }).join('');
@@ -805,6 +877,107 @@ function removeLevel(index) {
   currentLevels.forEach(l => {
     if (!l.is_break) l.level_number = num++;
   });
+  // Clamp break after_round values to valid range
+  const maxRound = currentLevels.filter(l => !l.is_break).length;
+  currentLevels.forEach(l => {
+    if (l.is_break && l.after_round > maxRound) l.after_round = maxRound;
+  });
+  sortLevelsByPosition();
+  renderLevelsTable();
+}
+
+// Insert a new play level above the given index
+// Blinds are interpolated between the surrounding levels
+function insertLevel(index) {
+  const defaultDuration = parseInt($('#default-round-length').value) || 20;
+  const target = currentLevels[index];
+
+  // Find the previous and next play levels relative to this index
+  let prevPlay = null;
+  for (let i = index - 1; i >= 0; i--) {
+    if (!currentLevels[i].is_break) { prevPlay = currentLevels[i]; break; }
+  }
+  let nextPlay = null;
+  if (!target.is_break) {
+    nextPlay = target;
+  } else {
+    for (let i = index + 1; i < currentLevels.length; i++) {
+      if (!currentLevels[i].is_break) { nextPlay = currentLevels[i]; break; }
+    }
+  }
+
+  let sb, bb, ante;
+  if (prevPlay && nextPlay) {
+    // Midpoint between surrounding levels
+    sb = Math.round((prevPlay.small_blind + nextPlay.small_blind) / 2);
+    bb = Math.round((prevPlay.big_blind + nextPlay.big_blind) / 2);
+    ante = Math.round(((prevPlay.ante || 0) + (nextPlay.ante || 0)) / 2);
+  } else if (nextPlay) {
+    // Inserting before the first level — use half of next level's blinds
+    sb = Math.max(1, Math.round(nextPlay.small_blind / 2));
+    bb = Math.max(2, Math.round(nextPlay.big_blind / 2));
+    ante = nextPlay.ante > 0 ? Math.round(nextPlay.ante / 2) : 0;
+  } else if (prevPlay) {
+    // Inserting after the last level — double previous
+    sb = prevPlay.small_blind * 2;
+    bb = prevPlay.big_blind * 2;
+    ante = prevPlay.ante > 0 ? prevPlay.ante * 2 : 0;
+  } else {
+    sb = 5; bb = 10; ante = 0;
+  }
+
+  const newLevel = {
+    level_number: 0, // will be re-numbered below
+    small_blind: sb,
+    big_blind: bb,
+    ante: ante,
+    duration_minutes: defaultDuration,
+    is_break: false
+  };
+
+  currentLevels.splice(index, 0, newLevel);
+
+  // Re-number all play levels sequentially
+  let num = 1;
+  currentLevels.forEach(l => {
+    if (!l.is_break) l.level_number = num++;
+  });
+
+  sortLevelsByPosition();
+  renderLevelsTable();
+}
+
+// Sort currentLevels so breaks appear right after their designated round
+function sortLevelsByPosition() {
+  // Separate play levels and breaks
+  const playLevels = currentLevels.filter(l => !l.is_break);
+  const breaks = currentLevels.filter(l => l.is_break);
+  
+  // Rebuild the array: for each play level, insert it, then any breaks that go after it
+  const result = [];
+  for (const pl of playLevels) {
+    result.push(pl);
+    // Add all breaks scheduled after this round number
+    for (const br of breaks) {
+      if (br.after_round === pl.level_number) {
+        result.push(br);
+      }
+    }
+  }
+  // Any breaks with after_round=0 or unmatched go at the very beginning (unlikely but safe)
+  for (const br of breaks) {
+    if (!result.includes(br)) {
+      result.push(br);
+    }
+  }
+  
+  currentLevels.length = 0;
+  result.forEach(l => currentLevels.push(l));
+}
+
+function updateBreakAfterRound(breakIndex, newAfterRound) {
+  currentLevels[breakIndex].after_round = parseInt(newAfterRound);
+  sortLevelsByPosition();
   renderLevelsTable();
 }
 
@@ -821,18 +994,23 @@ $('#add-level-btn').addEventListener('click', () => {
     is_break: false
   };
   currentLevels.push(newLevel);
+  sortLevelsByPosition();
   renderLevelsTable();
 });
 
 $('#add-break-btn').addEventListener('click', () => {
+  const playLevels = currentLevels.filter(l => !l.is_break);
+  const lastRound = playLevels.length > 0 ? playLevels[playLevels.length - 1].level_number : 1;
   currentLevels.push({
     level_number: 0,
     small_blind: 0,
     big_blind: 0,
     ante: 0,
     duration_minutes: 10,
-    is_break: true
+    is_break: true,
+    after_round: lastRound
   });
+  sortLevelsByPosition();
   renderLevelsTable();
 });
 
@@ -849,7 +1027,13 @@ $('#schedule-stack-ref').addEventListener('change', () => {
 //   M 10-20 → ~1.0% per hand (medium)
 //   M 5-10  → ~2.5% per hand (fast)
 //   M < 5   → ~5.0% per hand (very fast / shove-fest)
-// Rebuys add chips to the pool and keep player count stable until window closes.
+//
+// Rebuy model:
+//   - Rebuys occur DURING the rebuy window (not all at the end)
+//   - Each play level in the rebuy window gets a proportional share of rebuy chips added
+//   - Rebuys also slow eliminations during the window — when a player is eliminated
+//     and rebuys are still available, they re-enter (net player count stays higher)
+//   - After the rebuy window closes, the full chip pool is locked in
 
 function renderPrediction() {
   const output = $('#prediction-output');
@@ -863,7 +1047,8 @@ function renderPrediction() {
   const startingStack = refStack.chips.reduce((sum, c) => sum + c.denomination * c.quantity, 0);
   const players = parseInt($('#pred-players').value) || 20;
   const totalRebuys = parseInt($('#pred-rebuys').value) || 0;
-  const rebuyValue = parseFloat($('#pred-rebuy-value').value) || 0;
+  // Rebuy stack value = same as starting stack (same chips)
+  const rebuyValue = startingStack;
   const rebuyThroughLevel = parseInt($('#pred-rebuy-through').value) || 4;
   const handsPerHour = parseInt($('#pred-hands-hr').value) || 25;
   
@@ -874,22 +1059,25 @@ function renderPrediction() {
     return;
   }
   
-  // Total chips entering play = starting + rebuys
-  const totalStartChips = players * startingStack;
-  const totalRebuyChips = totalRebuys * rebuyValue;
+  // How many play levels are inside the rebuy window?
+  const rebuyWindowLevels = playLevels.filter(l => l.level_number <= rebuyThroughLevel);
+  const numRebuyWindowLevels = Math.max(rebuyWindowLevels.length, 1);
+  
+  // Chips injected per rebuy window level (spread evenly)
+  const chipsPerRebuyLevel = (totalRebuys * rebuyValue) / numRebuyWindowLevels;
+  
+  // Rebuys consumed per window level (spread evenly — used to track remaining rebuy budget)
+  const rebuysPerWindowLevel = totalRebuys / numRebuyWindowLevels;
   
   // Simulate level by level
   let remainingPlayers = players;
-  let totalChipsInPlay = totalStartChips;
+  let totalChipsInPlay = players * startingStack;
+  let rebuysRemaining = totalRebuys;
   let cumulativeMinutes = 0;
   let finishLevel = null;
   let finishMinutes = null;
-  let rebuyChipsAdded = false;
   
   const levelData = [];
-  
-  // Walk through ALL currentLevels (including breaks) for timing, but only simulate on play levels
-  let playLevelIndex = 0;
   
   for (let i = 0; i < currentLevels.length; i++) {
     const lvl = currentLevels[i];
@@ -903,18 +1091,14 @@ function renderPrediction() {
     
     if (!isLevelAchievable(lvl, refStack) || lvl.big_blind === 0) continue;
     
-    // Add rebuy chips once the rebuy window closes (after rebuyThroughLevel)
-    if (!rebuyChipsAdded && lvl.level_number > rebuyThroughLevel) {
-      totalChipsInPlay += totalRebuyChips;
-      rebuyChipsAdded = true;
-    }
-    // Also add if we never closed the window (rebuyThroughLevel >= last level)
-    if (!rebuyChipsAdded && i === currentLevels.length - 1) {
-      totalChipsInPlay += totalRebuyChips;
-      rebuyChipsAdded = true;
-    }
-    
     if (remainingPlayers <= 1) break;
+    
+    const inRebuyWindow = lvl.level_number <= rebuyThroughLevel && rebuysRemaining > 0;
+    
+    // Inject this level's share of rebuy chips into the pool
+    if (inRebuyWindow) {
+      totalChipsInPlay += chipsPerRebuyLevel;
+    }
     
     const avgStack = totalChipsInPlay / remainingPlayers;
     const orbit = lvl.small_blind + lvl.big_blind + (lvl.ante || 0);
@@ -928,11 +1112,21 @@ function renderPrediction() {
     else             elimRatePerHand = 0.050;
     
     const handsThisLevel = (lvl.duration_minutes / 60) * handsPerHour;
-    // Expected eliminations: each hand eliminates elimRate fraction of remaining
-    // Use compound: remaining_after = remaining * (1 - elimRate)^hands
+    // Compound survival: remaining_after = remaining * (1 - elimRate)^hands
     const survivalRate = Math.pow(1 - elimRatePerHand, handsThisLevel);
-    const playersAfter = Math.max(1, remainingPlayers * survivalRate);
-    const elimsThisLevel = remainingPlayers - playersAfter;
+    let rawElims = remainingPlayers * (1 - survivalRate);
+    
+    // During the rebuy window, eliminated players can re-enter.
+    // Net eliminations = max(0, rawElims - rebuysThisLevel)
+    let netElims = rawElims;
+    let rebuysUsedThisLevel = 0;
+    if (inRebuyWindow) {
+      rebuysUsedThisLevel = Math.min(rebuysPerWindowLevel, rebuysRemaining, rawElims);
+      netElims = Math.max(0, rawElims - rebuysUsedThisLevel);
+      rebuysRemaining -= rebuysUsedThisLevel;
+    }
+    
+    const playersAfter = Math.max(1, remainingPlayers - netElims);
     
     const mClass = M > 20 ? 'healthy' : M > 10 ? 'medium' : 'short';
     
@@ -950,8 +1144,10 @@ function renderPrediction() {
       mClass,
       playersStart: Math.round(remainingPlayers),
       playersEnd: Math.round(playersAfter),
-      elimsThisLevel: Math.round(elimsThisLevel),
+      elimsThisLevel: Math.round(netElims),
+      rebuysThisLevel: Math.round(rebuysUsedThisLevel),
       handsThisLevel: Math.round(handsThisLevel),
+      inRebuyWindow,
     });
     
     remainingPlayers = playersAfter;
@@ -967,15 +1163,31 @@ function renderPrediction() {
     finishMinutes = cumulativeMinutes;
   }
   
+  // Total chips at end of rebuy window (for summary display)
+  const totalStartChips = players * startingStack;
+  const totalRebuyChips = totalRebuys * rebuyValue;
+
   // Build the output
+  const rebuyNote = totalRebuys > 0
+    ? `<div class="summary-row">
+        <span class="summary-label">Rebuys (${totalRebuys} × ${fmt(rebuyValue)})</span>
+        <span class="summary-value">${fmt(totalRebuyChips)}</span>
+      </div>`
+    : '';
+
   const summaryHTML = `
     <div class="summary-box" style="margin-bottom:16px">
       <div class="summary-row">
-        <span class="summary-label">Starting Players</span>
+        <span class="summary-label">Entrants</span>
         <span class="summary-value">${players}</span>
       </div>
       <div class="summary-row">
-        <span class="summary-label">Total Chips in Play</span>
+        <span class="summary-label">Starting Chips in Play</span>
+        <span class="summary-value">${fmt(totalStartChips)}</span>
+      </div>
+      ${rebuyNote}
+      <div class="summary-row">
+        <span class="summary-label">Total Chips (incl. rebuys)</span>
         <span class="summary-value">${fmt(totalStartChips + totalRebuyChips)}</span>
       </div>
       <div class="summary-row">
@@ -1000,14 +1212,21 @@ function renderPrediction() {
   // Pressure bar at top
   const pressureHTML = buildPressureBar(levelData, players);
   
-  // Per-level table
+  // Per-level table — add Rebuys column if rebuys are in play
+  const showRebuys = totalRebuys > 0;
+  const colCount = showRebuys ? 9 : 8;
+
   const tableRows = levelData.map(d => {
     if (d.isBreak) {
-      return `<tr class="break-row"><td colspan="8" style="text-align:center">☕ Break (${d.duration} min) — ${formatTime(d.cumulative)}</td></tr>`;
+      return `<tr class="break-row"><td colspan="${colCount}" style="text-align:center">☕ Break (${d.duration} min) — ${formatTime(d.cumulative)}</td></tr>`;
     }
     const mStr = d.M > 50 ? '>50' : d.M.toFixed(1);
+    const rebuyCell = showRebuys
+      ? `<td style="color:var(--gold)">${d.rebuysThisLevel > 0 ? '+' + d.rebuysThisLevel + ' 🔄' : '—'}</td>`
+      : '';
+    const rebuyRowStyle = d.inRebuyWindow ? 'border-left:3px solid var(--gold)' : '';
     return `
-      <tr>
+      <tr style="${rebuyRowStyle}">
         <td>${d.levelNum}</td>
         <td>${fmt(d.sb)}/${fmt(d.bb)}${d.ante > 0 ? '+' + fmt(d.ante) : ''}</td>
         <td>${formatTime(d.levelStart)}–${formatTime(d.cumulative)}</td>
@@ -1015,11 +1234,14 @@ function renderPrediction() {
         <td><span class="bb-count ${d.mClass}">M=${mStr}</span></td>
         <td>${d.playersStart}</td>
         <td style="color:var(--red)">−${d.elimsThisLevel}</td>
+        ${rebuyCell}
         <td><b>${d.playersEnd}</b></td>
       </tr>
     `;
   }).join('');
-  
+
+  const rebuyHeader = showRebuys ? '<th>Rebuys</th>' : '';
+
   output.innerHTML = `
     ${summaryHTML}
     ${pressureHTML}
@@ -1027,7 +1249,7 @@ function renderPrediction() {
       <table class="levels-table">
         <thead><tr>
           <th>Lvl</th><th>Blinds</th><th>Time</th><th>Avg Stack</th><th>Avg M</th>
-          <th>Players Start</th><th>Elims</th><th>Players End</th>
+          <th>Players Start</th><th>Elims</th>${rebuyHeader}<th>Players End</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
@@ -1035,6 +1257,7 @@ function renderPrediction() {
     <p style="color:var(--text-dim);font-size:0.75em;margin-top:8px">
       ⚠ Estimates only. Actual game length varies with player skill, table dynamics, and luck.
       Model assumes ${handsPerHour} hands/hour with elimination rate scaling by average M-ratio.
+      ${showRebuys ? 'Gold border = rebuy window open. Rebuys shown are re-entries modeled as offset to eliminations.' : ''}
     </p>
   `;
 }
@@ -1099,7 +1322,8 @@ $('#save-schedule-btn').addEventListener('click', async () => {
     big_blind: l.big_blind,
     ante: l.ante,
     duration_minutes: l.duration_minutes,
-    is_break: l.is_break
+    is_break: l.is_break,
+    after_round: l.is_break ? (l.after_round || 0) : 0
   }));
   
   if (editingScheduleId) {
@@ -1136,6 +1360,8 @@ function renderSavedSchedules() {
         </div>
         <div class="saved-item-actions">
           <button class="btn btn-secondary btn-sm" onclick="printSchedule(${sched.id})">🖨 Export</button>
+          <button class="btn btn-secondary btn-sm" onclick="copySchedule(${sched.id})">📋 Copy</button>
+          <button class="btn btn-secondary btn-sm" onclick="renameSchedule(${sched.id})">✏️ Rename</button>
           <button class="btn btn-secondary btn-sm" onclick="editSchedule(${sched.id})">Edit</button>
           <button class="btn btn-danger" onclick="deleteSchedule(${sched.id})">Delete</button>
         </div>
@@ -1149,14 +1375,34 @@ function editSchedule(id) {
   if (!sched) return;
   editingScheduleId = id;
   $('#schedule-name').value = sched.name;
-  currentLevels = sched.levels.map(l => ({
-    level_number: l.level_number,
-    small_blind: l.small_blind,
-    big_blind: l.big_blind,
-    ante: l.ante,
-    duration_minutes: l.duration_minutes,
-    is_break: !!l.is_break
-  }));
+  
+  // Reconstruct levels with after_round for breaks
+  // For legacy data without after_round, infer from position
+  let lastPlayLevel = 0;
+  currentLevels = sched.levels.map(l => {
+    if (!l.is_break) {
+      lastPlayLevel = l.level_number;
+      return {
+        level_number: l.level_number,
+        small_blind: l.small_blind,
+        big_blind: l.big_blind,
+        ante: l.ante,
+        duration_minutes: l.duration_minutes,
+        is_break: false
+      };
+    } else {
+      return {
+        level_number: 0,
+        small_blind: 0,
+        big_blind: 0,
+        ante: 0,
+        duration_minutes: l.duration_minutes,
+        is_break: true,
+        after_round: l.after_round || lastPlayLevel || 1
+      };
+    }
+  });
+  
   $('#save-schedule-btn').textContent = 'Update Schedule';
   renderLevelsTable();
   $('#page-blinds').scrollIntoView({ behavior: 'smooth' });
@@ -1165,6 +1411,42 @@ function editSchedule(id) {
 async function deleteSchedule(id) {
   if (!confirm('Delete this blind schedule?')) return;
   await api(`blind-schedules/${id}`, { method: 'DELETE' });
+  loadBlinds();
+}
+
+async function copySchedule(id) {
+  const sched = blindSchedules.find(s => s.id === id);
+  if (!sched) return;
+  const newName = prompt('Name for the copy:', sched.name + ' (Copy)');
+  if (!newName) return;
+  const levels = sched.levels.map(l => ({
+    level_number: l.is_break ? 0 : l.level_number,
+    small_blind: l.small_blind,
+    big_blind: l.big_blind,
+    ante: l.ante,
+    duration_minutes: l.duration_minutes,
+    is_break: l.is_break,
+    after_round: l.after_round || 0
+  }));
+  await api('blind-schedules', { method: 'POST', body: { name: newName, levels } });
+  loadBlinds();
+}
+
+async function renameSchedule(id) {
+  const sched = blindSchedules.find(s => s.id === id);
+  if (!sched) return;
+  const newName = prompt('New name:', sched.name);
+  if (!newName || newName === sched.name) return;
+  const levels = sched.levels.map(l => ({
+    level_number: l.is_break ? 0 : l.level_number,
+    small_blind: l.small_blind,
+    big_blind: l.big_blind,
+    ante: l.ante,
+    duration_minutes: l.duration_minutes,
+    is_break: l.is_break,
+    after_round: l.after_round || 0
+  }));
+  await api(`blind-schedules/${id}`, { method: 'PUT', body: { name: newName, levels } });
   loadBlinds();
 }
 
@@ -1445,21 +1727,36 @@ function printSchedule(id) {
   if (!sched) return;
   
   const playLevels = sched.levels.filter(l => !l.is_break);
+  const breakLevels = sched.levels.filter(l => l.is_break);
   const totalMin = sched.levels.reduce((s, l) => s + l.duration_minutes, 0);
+  const playMin = playLevels.reduce((s, l) => s + l.duration_minutes, 0);
+  const breakMin = breakLevels.reduce((s, l) => s + l.duration_minutes, 0);
+  const maxBB = playLevels.length > 0 ? playLevels[playLevels.length - 1].big_blind : 0;
   let cumMin = 0;
+  let rowIndex = 0;
   
   const rows = sched.levels.map(lvl => {
     const start = cumMin;
     cumMin += lvl.duration_minutes;
     if (lvl.is_break) {
-      return `<tr class="break-row"><td colspan="5" style="text-align:center;background:#f5f5e8;font-style:italic">☕ BREAK — ${lvl.duration_minutes} min (ends ${formatTime(cumMin)})</td></tr>`;
+      return `<tr class="break-row"><td colspan="6">☕ BREAK — ${lvl.duration_minutes} min <span class="break-time">(${formatTime(start)} → ${formatTime(cumMin)})</span></td></tr>`;
     }
-    return `<tr>
-      <td>${lvl.level_number}</td>
-      <td>${fmt(lvl.small_blind)} / ${fmt(lvl.big_blind)}${lvl.ante > 0 ? ' + ' + fmt(lvl.ante) + ' ante' : ''}</td>
+    rowIndex++;
+    const stripe = rowIndex % 2 === 0 ? ' class="even"' : '';
+    // Color-code the level number based on blind pressure progression
+    const pct = playLevels.indexOf(lvl) / Math.max(playLevels.length - 1, 1);
+    const r = Math.round(46 + pct * 185);  // 2e → e3
+    const g = Math.round(204 - pct * 128);  // cc → 4c
+    const b = Math.round(113 - pct * 73);   // 71 → 3c
+    const levelColor = `rgb(${r},${g},${b})`;
+    
+    return `<tr${stripe}>
+      <td class="lvl-cell"><span class="lvl-badge" style="background:${levelColor}">${lvl.level_number}</span></td>
+      <td class="blinds-cell">${fmt(lvl.small_blind)} / ${fmt(lvl.big_blind)}${lvl.ante > 0 ? `<span class="ante"> + ${fmt(lvl.ante)}</span>` : ''}</td>
       <td>${lvl.duration_minutes} min</td>
-      <td>${formatTime(start)}</td>
-      <td>${formatTime(cumMin)}</td>
+      <td class="time-cell">${formatTime(start)}</td>
+      <td class="time-cell">${formatTime(cumMin)}</td>
+      <td class="cumulative">${formatTime(cumMin)}</td>
     </tr>`;
   }).join('');
   
@@ -1467,26 +1764,98 @@ function printSchedule(id) {
   <title>${sched.name} — Blind Schedule</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: Georgia, serif; padding: 30px 40px; color: #1a1a1a; background: white; }
-    h1 { font-size: 1.8em; margin-bottom: 4px; }
-    .subtitle { color: #555; font-size: 0.95em; margin-bottom: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th { background: #2a5a2a; color: white; padding: 10px 12px; text-align: left; font-size: 1em; }
-    td { padding: 9px 12px; border-bottom: 1px solid #ddd; font-size: 0.95em; }
-    tr:nth-child(even) td { background: #f9f9f9; }
-    tr.break-row td { background: #f5f5e8 !important; color: #776600; }
-    .footer { margin-top: 24px; font-size: 0.8em; color: #888; text-align: right; }
-    @media print { body { padding: 15px 20px; } button { display:none; } }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 12px 20px;
+      color: #1a1a2e;
+      background: #fafbfc;
+      font-size: 11px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #2ecc71;
+    }
+    .header-icon { font-size: 1.4em; margin-bottom: 0; }
+    h1 { font-size: 1.3em; font-weight: 700; color: #1a1a2e; margin-bottom: 1px; }
+    .subtitle { color: #6b7a86; font-size: 0.85em; }
+    .stats-bar {
+      display: flex; gap: 10px; justify-content: center;
+      margin: 6px 0 8px; flex-wrap: wrap;
+    }
+    .stat {
+      text-align: center; padding: 4px 10px;
+      background: white; border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+    .stat-value { font-size: 1.1em; font-weight: 700; color: #2ecc71; }
+    .stat-label { font-size: 0.7em; color: #8895a5; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 8px; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    thead th {
+      background: linear-gradient(135deg, #1a3a1a 0%, #2a5a2a 100%);
+      color: white; padding: 6px 10px; text-align: left;
+      font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+    }
+    thead th:first-child { border-radius: 10px 0 0 0; }
+    thead th:last-child { border-radius: 0 10px 0 0; }
+    tbody td {
+      padding: 5px 10px; font-size: 0.9em; background: white;
+      border-bottom: 1px solid #f0f2f5;
+    }
+    tbody tr.even td { background: #f7faf7; }
+    tbody tr:hover td { background: #e8f5e8; }
+    tbody tr:last-child td:first-child { border-radius: 0 0 0 10px; }
+    tbody tr:last-child td:last-child { border-radius: 0 0 10px 0; }
+    .lvl-cell { text-align: center; width: 40px; }
+    .lvl-badge {
+      display: inline-block; width: 22px; height: 22px; line-height: 22px;
+      border-radius: 50%; color: white; font-weight: 700; font-size: 0.75em;
+      text-align: center;
+    }
+    .blinds-cell { font-weight: 600; font-size: 0.9em; color: #1a1a2e; }
+    .ante { color: #8895a5; font-weight: 400; font-size: 0.85em; }
+    .time-cell { color: #5a6a76; }
+    .cumulative { color: #8895a5; font-size: 0.85em; }
+    .break-row td {
+      background: linear-gradient(90deg, #fef9e7 0%, #fdf2d5 100%) !important;
+      text-align: center; font-style: italic; color: #9a7b2e;
+      font-weight: 500; letter-spacing: 0.3px;
+      border-bottom: 1px solid #f0e6c0;
+    }
+    .break-time { font-weight: 400; font-size: 0.85em; opacity: 0.7; }
+    .footer {
+      margin-top: 20px; font-size: 0.78em; color: #a0a8b0;
+      text-align: center; padding-top: 12px;
+      border-top: 1px solid #e8ecf0;
+    }
+    @media print {
+      body { padding: 15px 20px; background: white; }
+      button { display:none !important; }
+      .stat { box-shadow: none; border: 1px solid #ddd; }
+      table { box-shadow: none; }
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
   </style></head><body>
-  <h1>♠ ${sched.name}</h1>
-  <div class="subtitle">${playLevels.length} levels · ${formatTime(totalMin)} total</div>
+  <div class="header">
+    <div class="header-icon">♠</div>
+    <h1>${sched.name}</h1>
+    <div class="subtitle">Blind Schedule</div>
+  </div>
+  <div class="stats-bar">
+    <div class="stat"><div class="stat-value">${playLevels.length}</div><div class="stat-label">Levels</div></div>
+    <div class="stat"><div class="stat-value">${formatTime(playMin)}</div><div class="stat-label">Play Time</div></div>
+    <div class="stat"><div class="stat-value">${breakLevels.length}</div><div class="stat-label">Breaks</div></div>
+    <div class="stat"><div class="stat-value">${formatTime(totalMin)}</div><div class="stat-label">Total</div></div>
+    <div class="stat"><div class="stat-value">${fmt(maxBB)}</div><div class="stat-label">Max BB</div></div>
+  </div>
   <table>
-    <thead><tr><th>Level</th><th>Blinds</th><th>Duration</th><th>Starts</th><th>Ends</th></tr></thead>
+    <thead><tr><th>Lvl</th><th>Blinds</th><th>Duration</th><th>Start</th><th>End</th><th>Elapsed</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <div class="footer">Printed from Poker Tournament Designer</div>
-  <br><button onclick="window.print()" style="padding:8px 20px;background:#2a5a2a;color:white;border:none;border-radius:4px;cursor:pointer;font-size:1em">🖨 Print</button>
-  <script>setTimeout(() => window.print(), 300);</script>
+  <div class="footer">♠ Poker Tournament Designer · ${new Date().toLocaleDateString()}</div>
+  <br><button onclick="window.print()" style="display:block;margin:12px auto 0;padding:10px 28px;background:linear-gradient(135deg,#1a3a1a,#2a5a2a);color:white;border:none;border-radius:6px;cursor:pointer;font-size:1em;font-weight:600">🖨 Print / Save PDF</button>
+  <script>setTimeout(() => window.print(), 400);</script>
   </body></html>`;
   
   const w = window.open('', '_blank');

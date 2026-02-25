@@ -116,6 +116,22 @@
             <label>Default Round Length (min)</label>
             <input type="number" id="default-round-length" value="20" min="1" max="120" style="max-width:80px">
           </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Entrants</label>
+            <input type="number" id="pred-players" value="20" min="2" max="200" style="max-width:80px" oninput="renderLevelsTable()">
+          </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Expected Rebuys</label>
+            <input type="number" id="pred-rebuys" value="0" min="0" max="500" style="max-width:80px" oninput="renderLevelsTable()">
+          </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Rebuy Through Level</label>
+            <input type="number" id="pred-rebuy-through" value="4" min="0" max="50" style="max-width:80px" oninput="renderLevelsTable()">
+          </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Hands/Hour (live ≈ 25)</label>
+            <input type="number" id="pred-hands-hr" value="25" min="10" max="60" style="max-width:80px" oninput="renderLevelsTable()">
+          </div>
         </div>
         <div class="btn-row" style="margin-bottom:10px">
           <button class="btn btn-secondary" id="add-level-btn">+ Add Level</button>
@@ -142,28 +158,6 @@
       <div class="section" id="predictor-section">
         <h2>⏱ Game Length Predictor</h2>
         <p style="color:var(--text-dim);font-size:0.85em;margin-bottom:12px">Estimates how long the tournament will run based on blind pressure. Select a reference stack above to enable.</p>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px">
-          <div class="form-row" style="margin-bottom:0">
-            <label>Players</label>
-            <input type="number" id="pred-players" value="20" min="2" max="200" style="max-width:80px" oninput="renderPrediction()">
-          </div>
-          <div class="form-row" style="margin-bottom:0">
-            <label>Rebuys (total expected)</label>
-            <input type="number" id="pred-rebuys" value="0" min="0" max="500" style="max-width:80px" oninput="renderPrediction()">
-          </div>
-          <div class="form-row" style="margin-bottom:0">
-            <label>Rebuy Stack Value ($)</label>
-            <input type="number" id="pred-rebuy-value" value="0" min="0" style="max-width:100px" oninput="renderPrediction()">
-          </div>
-          <div class="form-row" style="margin-bottom:0">
-            <label>Rebuy Through Level</label>
-            <input type="number" id="pred-rebuy-through" value="4" min="0" max="50" style="max-width:80px" oninput="renderPrediction()">
-          </div>
-          <div class="form-row" style="margin-bottom:0">
-            <label>Hands/Hour (live ≈ 25)</label>
-            <input type="number" id="pred-hands-hr" value="25" min="10" max="60" style="max-width:80px" oninput="renderPrediction()">
-          </div>
-        </div>
         <div id="prediction-output"></div>
       </div>
 

@@ -106,7 +106,7 @@ app.delete('/api/stack-configs/:id', (req, res) => {
 app.get('/api/blind-schedules', (req, res) => {
   const schedules = db.prepare('SELECT * FROM blind_schedules ORDER BY created_at DESC').all();
   for (const s of schedules) {
-    s.levels = db.prepare('SELECT * FROM blind_levels WHERE schedule_id = ? ORDER BY level_number').all(s.id);
+    s.levels = db.prepare('SELECT * FROM blind_levels WHERE schedule_id = ? ORDER BY sort_order, id').all(s.id);
   }
   res.json(schedules);
 });
@@ -116,10 +116,10 @@ app.post('/api/blind-schedules', (req, res) => {
   const { name, levels } = req.body;
   const result = db.prepare('INSERT INTO blind_schedules (name) VALUES (?)').run(name);
   const id = result.lastInsertRowid;
-  const insertLevel = db.prepare('INSERT INTO blind_levels (schedule_id, level_number, small_blind, big_blind, ante, duration_minutes, is_break) VALUES (?, ?, ?, ?, ?, ?, ?)');
-  for (const lvl of levels) {
-    insertLevel.run(id, lvl.level_number, lvl.small_blind || 0, lvl.big_blind || 0, lvl.ante || 0, lvl.duration_minutes || 20, lvl.is_break ? 1 : 0);
-  }
+  const insertLevel = db.prepare('INSERT INTO blind_levels (schedule_id, level_number, small_blind, big_blind, ante, duration_minutes, is_break, sort_order, after_round) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  levels.forEach((lvl, idx) => {
+    insertLevel.run(id, lvl.level_number, lvl.small_blind || 0, lvl.big_blind || 0, lvl.ante || 0, lvl.duration_minutes || 20, lvl.is_break ? 1 : 0, idx, lvl.after_round || 0);
+  });
   res.json({ id });
 });
 
@@ -128,10 +128,10 @@ app.put('/api/blind-schedules/:id', (req, res) => {
   const { name, levels } = req.body;
   db.prepare('UPDATE blind_schedules SET name = ? WHERE id = ?').run(name, req.params.id);
   db.prepare('DELETE FROM blind_levels WHERE schedule_id = ?').run(req.params.id);
-  const insertLevel = db.prepare('INSERT INTO blind_levels (schedule_id, level_number, small_blind, big_blind, ante, duration_minutes, is_break) VALUES (?, ?, ?, ?, ?, ?, ?)');
-  for (const lvl of levels) {
-    insertLevel.run(req.params.id, lvl.level_number, lvl.small_blind || 0, lvl.big_blind || 0, lvl.ante || 0, lvl.duration_minutes || 20, lvl.is_break ? 1 : 0);
-  }
+  const insertLevel = db.prepare('INSERT INTO blind_levels (schedule_id, level_number, small_blind, big_blind, ante, duration_minutes, is_break, sort_order, after_round) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  levels.forEach((lvl, idx) => {
+    insertLevel.run(req.params.id, lvl.level_number, lvl.small_blind || 0, lvl.big_blind || 0, lvl.ante || 0, lvl.duration_minutes || 20, lvl.is_break ? 1 : 0, idx, lvl.after_round || 0);
+  });
   res.json({ ok: true });
 });
 
@@ -212,7 +212,7 @@ app.get('/api/tournaments/:id/details', (req, res) => {
   if (tournament.blind_schedule_id) {
     tournament.schedule = db.prepare('SELECT * FROM blind_schedules WHERE id = ?').get(tournament.blind_schedule_id);
     if (tournament.schedule) {
-      tournament.schedule.levels = db.prepare('SELECT * FROM blind_levels WHERE schedule_id = ? ORDER BY level_number').all(tournament.blind_schedule_id);
+      tournament.schedule.levels = db.prepare('SELECT * FROM blind_levels WHERE schedule_id = ? ORDER BY sort_order, id').all(tournament.blind_schedule_id);
     }
   }
   
