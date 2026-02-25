@@ -117,6 +117,11 @@
             <input type="number" id="default-round-length" value="20" min="1" max="120" style="max-width:80px">
           </div>
         </div>
+        <div class="btn-row" style="margin-bottom:10px">
+          <button class="btn btn-secondary" id="add-level-btn">+ Add Level</button>
+          <button class="btn btn-secondary" id="add-break-btn">+ Add Break</button>
+          <button class="btn btn-primary" id="save-schedule-btn">Save Schedule</button>
+        </div>
         <table class="levels-table" id="levels-table">
           <thead>
             <tr>
@@ -126,17 +131,11 @@
               <th>Ante</th>
               <th>Duration</th>
               <th>BB in Stack</th>
-              <th>Chip-Up?</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="levels-tbody"></tbody>
         </table>
-        <div class="btn-row">
-          <button class="btn btn-secondary" id="add-level-btn">+ Add Level</button>
-          <button class="btn btn-secondary" id="add-break-btn">+ Add Break</button>
-          <button class="btn btn-primary" id="save-schedule-btn">Save Schedule</button>
-        </div>
         <div id="schedule-summary" class="summary-box"></div>
       </div>
 

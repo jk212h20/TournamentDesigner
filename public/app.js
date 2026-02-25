@@ -572,6 +572,7 @@ function renderSavedStacks() {
           </div>
           <div class="saved-item-actions">
             <button class="btn btn-secondary btn-sm" onclick="viewStackVisual(${config.id})">👁 View</button>
+            <button class="btn btn-secondary btn-sm" onclick="printStack(${config.id})">🖨 Export</button>
             <button class="btn btn-secondary btn-sm" onclick="editStack(${config.id})">Edit</button>
             <button class="btn btn-danger" onclick="deleteStack(${config.id})">Delete</button>
           </div>
@@ -703,7 +704,6 @@ function renderLevelsTable() {
                    onchange="updateLevel(${i}, 'duration_minutes', this.value)" style="max-width:60px"> min
           </td>
           <td></td>
-          <td></td>
           <td><button class="btn btn-danger" onclick="removeLevel(${i})">✕</button></td>
         </tr>
       `;
@@ -722,13 +722,6 @@ function renderLevelsTable() {
       bbStr = bbs + ' BB';
     }
     
-    const smallestNeeded = Math.min(lvl.small_blind, lvl.big_blind, lvl.ante || Infinity);
-    let chipUpStr = '';
-    if (prevSmallestNeeded !== null && smallestNeeded > prevSmallestNeeded && achievable) {
-      chipUpStr = `<span class="chip-up-yes">↑ Remove ${fmt(prevSmallestNeeded)}</span>`;
-    }
-    if (achievable) prevSmallestNeeded = smallestNeeded;
-    
     return `
       <tr style="${rowStyle}">
         <td>${lvl.level_number}${skipBadge}</td>
@@ -743,7 +736,6 @@ function renderLevelsTable() {
                  onchange="updateLevel(${i}, 'duration_minutes', this.value)" style="max-width:60px"> min
         </td>
         <td><span class="bb-count ${bbClass}">${bbStr}</span></td>
-        <td>${chipUpStr}</td>
         <td><button class="btn btn-danger" onclick="removeLevel(${i})">✕</button></td>
       </tr>
     `;
@@ -1144,6 +1136,7 @@ function renderSavedSchedules() {
           <p>${playLevels.length} levels · ${formatTime(totalMin)} · Blinds up to ${fmt(maxBB)}</p>
         </div>
         <div class="saved-item-actions">
+          <button class="btn btn-secondary btn-sm" onclick="printSchedule(${sched.id})">🖨 Export</button>
           <button class="btn btn-secondary btn-sm" onclick="editSchedule(${sched.id})">Edit</button>
           <button class="btn btn-danger" onclick="deleteSchedule(${sched.id})">Delete</button>
         </div>
@@ -1444,6 +1437,108 @@ async function viewTournament(id) {
   `;
   
   section.scrollIntoView({ behavior: 'smooth' });
+}
+
+// ============ PRINT / EXPORT ============
+
+function printSchedule(id) {
+  const sched = blindSchedules.find(s => s.id === id);
+  if (!sched) return;
+  
+  const playLevels = sched.levels.filter(l => !l.is_break);
+  const totalMin = sched.levels.reduce((s, l) => s + l.duration_minutes, 0);
+  let cumMin = 0;
+  
+  const rows = sched.levels.map(lvl => {
+    const start = cumMin;
+    cumMin += lvl.duration_minutes;
+    if (lvl.is_break) {
+      return `<tr class="break-row"><td colspan="5" style="text-align:center;background:#f5f5e8;font-style:italic">☕ BREAK — ${lvl.duration_minutes} min (ends ${formatTime(cumMin)})</td></tr>`;
+    }
+    return `<tr>
+      <td>${lvl.level_number}</td>
+      <td>${fmt(lvl.small_blind)} / ${fmt(lvl.big_blind)}${lvl.ante > 0 ? ' + ' + fmt(lvl.ante) + ' ante' : ''}</td>
+      <td>${lvl.duration_minutes} min</td>
+      <td>${formatTime(start)}</td>
+      <td>${formatTime(cumMin)}</td>
+    </tr>`;
+  }).join('');
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>${sched.name} — Blind Schedule</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Georgia, serif; padding: 30px 40px; color: #1a1a1a; background: white; }
+    h1 { font-size: 1.8em; margin-bottom: 4px; }
+    .subtitle { color: #555; font-size: 0.95em; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th { background: #2a5a2a; color: white; padding: 10px 12px; text-align: left; font-size: 1em; }
+    td { padding: 9px 12px; border-bottom: 1px solid #ddd; font-size: 0.95em; }
+    tr:nth-child(even) td { background: #f9f9f9; }
+    tr.break-row td { background: #f5f5e8 !important; color: #776600; }
+    .footer { margin-top: 24px; font-size: 0.8em; color: #888; text-align: right; }
+    @media print { body { padding: 15px 20px; } button { display:none; } }
+  </style></head><body>
+  <h1>♠ ${sched.name}</h1>
+  <div class="subtitle">${playLevels.length} levels · ${formatTime(totalMin)} total</div>
+  <table>
+    <thead><tr><th>Level</th><th>Blinds</th><th>Duration</th><th>Starts</th><th>Ends</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">Printed from Poker Tournament Designer</div>
+  <br><button onclick="window.print()" style="padding:8px 20px;background:#2a5a2a;color:white;border:none;border-radius:4px;cursor:pointer;font-size:1em">🖨 Print</button>
+  <script>setTimeout(() => window.print(), 300);</script>
+  </body></html>`;
+  
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+function printStack(id) {
+  const config = stackConfigs.find(c => c.id === id);
+  if (!config) return;
+  
+  const startValue = config.chips.reduce((sum, c) => sum + c.denomination * c.quantity, 0);
+  const r1Value = (config.rebuy1_chips || []).reduce((sum, c) => sum + c.denomination * c.quantity, 0);
+  const r2Value = (config.rebuy2_chips || []).reduce((sum, c) => sum + c.denomination * c.quantity, 0);
+  
+  function stackTable(chips, title, value) {
+    if (!chips || chips.length === 0) return '';
+    const rows = chips.map(c => `<tr><td>${fmt(c.denomination)}</td><td>${c.quantity}</td><td>${fmt(c.denomination * c.quantity)}</td></tr>`).join('');
+    return `<div class="stack-block">
+      <h2>${title} — ${fmt(value)}</h2>
+      <table><thead><tr><th>Chip</th><th>Qty</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>${config.name} — Stack Sheet</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Georgia, serif; padding: 30px 40px; color: #1a1a1a; background: white; }
+    h1 { font-size: 1.8em; margin-bottom: 20px; }
+    .stack-block { margin-bottom: 24px; }
+    h2 { font-size: 1.1em; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 2px solid #2a5a2a; color: #2a5a2a; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #2a5a2a; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #ddd; }
+    tr:nth-child(even) td { background: #f9f9f9; }
+    .footer { margin-top: 24px; font-size: 0.8em; color: #888; text-align: right; }
+    @media print { body { padding: 15px 20px; } button { display:none; } }
+  </style></head><body>
+  <h1>♠ ${config.name}</h1>
+  ${stackTable(config.chips, '🎯 Starting Stack', startValue)}
+  ${r1Value > 0 ? stackTable(config.rebuy1_chips, '🔄 Rebuy 1', r1Value) : ''}
+  ${r2Value > 0 ? stackTable(config.rebuy2_chips, '🔄 Rebuy 2', r2Value) : ''}
+  <div class="footer">Printed from Poker Tournament Designer</div>
+  <br><button onclick="window.print()" style="padding:8px 20px;background:#2a5a2a;color:white;border:none;border-radius:4px;cursor:pointer;font-size:1em">🖨 Print</button>
+  <script>setTimeout(() => window.print(), 300);</script>
+  </body></html>`;
+  
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
 }
 
 async function deleteTournament(id) {
