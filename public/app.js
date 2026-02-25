@@ -1404,6 +1404,24 @@ function editSchedule(id) {
   });
   
   $('#save-schedule-btn').textContent = 'Update Schedule';
+  
+  // Set default round length to the most common duration in the loaded schedule
+  const playDurations = currentLevels.filter(l => !l.is_break).map(l => l.duration_minutes);
+  if (playDurations.length > 0) {
+    // Find the most common duration
+    const freq = {};
+    playDurations.forEach(d => freq[d] = (freq[d] || 0) + 1);
+    const mostCommon = Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+    $('#default-round-length').value = mostCommon;
+  }
+  
+  // Set rebuy-through to the number of play levels if it exceeds current value
+  const numPlayLevels = currentLevels.filter(l => !l.is_break).length;
+  const currentRebuyThrough = parseInt($('#pred-rebuy-through').value) || 4;
+  if (currentRebuyThrough > numPlayLevels) {
+    $('#pred-rebuy-through').value = Math.min(numPlayLevels, 4);
+  }
+  
   renderLevelsTable();
   $('#page-blinds').scrollIntoView({ behavior: 'smooth' });
 }
