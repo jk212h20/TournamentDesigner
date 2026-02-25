@@ -1512,28 +1512,24 @@ function printStack(id) {
   function chipTowerSVG(denom, qty) {
     const color = chipColor(denom);
     const text = isLight(color) ? '#1a1a1a' : '#ffffff';
-    const chipH = 14; // height of each chip slice
-    const chipW = 60;
-    const maxShow = Math.min(qty, 15);
-    const totalH = maxShow * chipH + 20;
+    const chipH = 8;   // smaller slices
+    const chipW = 38;  // narrower
+    const rx = chipW / 2 - 1;
+    const ry = 4;
+    const maxShow = Math.min(qty, 12);
+    const totalH = maxShow * chipH + 16;
     
     let slices = '';
     for (let i = 0; i < maxShow; i++) {
-      const y = totalH - 20 - (i + 1) * chipH;
-      // Ellipse top
-      slices += `<ellipse cx="${chipW/2}" cy="${y}" rx="${chipW/2-2}" ry="6" fill="${color}" stroke="rgba(0,0,0,0.25)" stroke-width="1"/>`;
-      // Body rectangle
-      slices += `<rect x="2" y="${y}" width="${chipW-4}" height="${chipH}" fill="${color}" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>`;
+      const y = totalH - 16 - (i + 1) * chipH;
+      slices += `<ellipse cx="${chipW/2}" cy="${y}" rx="${rx}" ry="${ry}" fill="${color}" stroke="rgba(0,0,0,0.25)" stroke-width="0.8"/>`;
+      slices += `<rect x="1" y="${y}" width="${chipW-2}" height="${chipH}" fill="${color}" stroke="rgba(0,0,0,0.08)" stroke-width="0.5"/>`;
     }
-    // Bottom ellipse
-    slices += `<ellipse cx="${chipW/2}" cy="${totalH-20}" rx="${chipW/2-2}" ry="6" fill="${color}" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>`;
-    // Top chip face with denomination text
-    const topY = totalH - 20 - maxShow * chipH;
-    slices += `<ellipse cx="${chipW/2}" cy="${topY}" rx="${chipW/2-2}" ry="6" fill="${color}" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>`;
-    // Dashed inner ring on top chip
-    slices += `<ellipse cx="${chipW/2}" cy="${topY}" rx="${chipW/2-10}" ry="3.5" fill="none" stroke="rgba(0,0,0,0.2)" stroke-width="1" stroke-dasharray="3,2"/>`;
-    // Denomination text on top
-    slices += `<text x="${chipW/2}" y="${topY+2.5}" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="bold" font-family="Arial,sans-serif" fill="${text}">${shortD(denom)}</text>`;
+    const topY = totalH - 16 - maxShow * chipH;
+    slices += `<ellipse cx="${chipW/2}" cy="${totalH-16}" rx="${rx}" ry="${ry}" fill="${color}" stroke="rgba(0,0,0,0.3)" stroke-width="0.8"/>`;
+    slices += `<ellipse cx="${chipW/2}" cy="${topY}" rx="${rx}" ry="${ry}" fill="${color}" stroke="rgba(0,0,0,0.2)" stroke-width="0.8"/>`;
+    slices += `<ellipse cx="${chipW/2}" cy="${topY}" rx="${rx-6}" ry="${ry-1.5}" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="0.8" stroke-dasharray="2,1.5"/>`;
+    slices += `<text x="${chipW/2}" y="${topY+1.5}" text-anchor="middle" dominant-baseline="middle" font-size="6" font-weight="bold" font-family="Arial,sans-serif" fill="${text}">${shortD(denom)}</text>`;
     
     return `<svg width="${chipW}" height="${totalH}" xmlns="http://www.w3.org/2000/svg">${slices}</svg>`;
   }
@@ -1544,13 +1540,12 @@ function printStack(id) {
     
     const towers = chips.filter(c => c.quantity > 0).map(chip => {
       const color = chipColor(chip.denomination);
-      const textC = isLight(color) ? '#333' : '#fff';
       return `
-        <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
           ${chipTowerSVG(chip.denomination, chip.quantity)}
-          <div style="font-size:11px;font-weight:700;color:${color};text-shadow:0 0 4px rgba(0,0,0,0.3)">${fmtD(chip.denomination)}</div>
-          <div style="font-size:11px;color:#555">× ${chip.quantity}</div>
-          <div style="font-size:10px;color:#888">${fmtD(chip.denomination * chip.quantity)}</div>
+          <div style="font-size:10px;font-weight:700;color:${color}">${fmtD(chip.denomination)}</div>
+          <div style="font-size:10px;color:#9ba8b4">× ${chip.quantity}</div>
+          <div style="font-size:9px;color:#6b7a86">${fmtD(chip.denomination * chip.quantity)}</div>
         </div>
       `;
     }).join('');
@@ -1574,16 +1569,38 @@ function printStack(id) {
   <title>${config.name} — Stack Sheet</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: 'Georgia', serif; padding: 30px 40px; color: #1a1a1a; background: white; }
-    .header { display:flex; align-items:center; gap:16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 3px solid #2a5a2a; }
-    .header-title { font-size: 2em; font-weight: 700; color: #1a3a1a; }
-    .header-spade { font-size: 2.5em; color: #2a5a2a; }
-    .stack-section { margin-bottom: 28px; background: #f9fdf9; border-radius: 10px; padding: 16px 20px; border: 1px solid #c8e6c9; }
-    .section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:8px; border-bottom: 2px solid #2a5a2a; }
-    .section-title { font-size: 1.1em; font-weight: 700; color: #1a3a1a; }
-    .section-value { font-size: 1.3em; font-weight: 700; color: #2a5a2a; }
-    .chip-towers { display:flex; gap:24px; align-items:flex-end; flex-wrap:wrap; padding: 8px 0; }
-    .footer { margin-top: 24px; font-size: 0.8em; color: #888; text-align: right; border-top: 1px solid #eee; padding-top: 10px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #ecf0f1;
+      padding: 30px 40px;
+      min-height: 100vh;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 28px;
+      padding-bottom: 18px;
+      border-bottom: 2px solid #2ecc71;
+    }
+    .header-spade { font-size: 2em; color: #2ecc71; display:block; margin-bottom:4px; }
+    .header-title { font-size: 2em; font-weight: 700; color: #ecf0f1; }
+    .header-sub { color: #95a5a6; font-size: 0.9em; margin-top: 4px; }
+    .stack-section {
+      margin-bottom: 22px;
+      background: #16213e;
+      border-radius: 10px;
+      padding: 16px 20px;
+      border: 1px solid #2c3e50;
+    }
+    .section-header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom: 14px; padding-bottom: 8px;
+      border-bottom: 1px solid #2ecc71;
+    }
+    .section-title { font-size: 1em; font-weight: 700; color: #2ecc71; }
+    .section-value { font-size: 1.2em; font-weight: 700; color: #f39c12; }
+    .chip-towers { display:flex; gap:18px; align-items:flex-end; flex-wrap:wrap; padding: 6px 0; }
+    .footer { margin-top: 20px; font-size: 0.75em; color: #636e72; text-align: center; border-top: 1px solid #2c3e50; padding-top: 10px; }
     @media print {
       body { padding: 15px 20px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       button { display:none !important; }
@@ -1591,16 +1608,14 @@ function printStack(id) {
   </style></head><body>
   <div class="header">
     <span class="header-spade">♠</span>
-    <div>
-      <div class="header-title">${config.name}</div>
-      <div style="color:#555;font-size:0.9em">Starting Stack: ${fmtD(startValue)}${r1Value > 0 ? ` · Rebuy 1: ${fmtD(r1Value)}` : ''}${r2Value > 0 ? ` · Rebuy 2: ${fmtD(r2Value)}` : ''}</div>
-    </div>
+    <div class="header-title">${config.name}</div>
+    <div class="header-sub">Starting Stack: ${fmtD(startValue)}${r1Value > 0 ? ` &nbsp;·&nbsp; Rebuy 1: ${fmtD(r1Value)}` : ''}${r2Value > 0 ? ` &nbsp;·&nbsp; Rebuy 2: ${fmtD(r2Value)}` : ''}</div>
   </div>
   ${stackSection(config.chips, '🎯 Starting Stack', startValue)}
   ${r1Value > 0 ? stackSection(config.rebuy1_chips, '🔄 Rebuy 1', r1Value) : ''}
   ${r2Value > 0 ? stackSection(config.rebuy2_chips, '🔄 Rebuy 2', r2Value) : ''}
-  <div class="footer">Poker Tournament Designer · Printed ${new Date().toLocaleDateString()}</div>
-  <br><button onclick="window.print()" style="padding:8px 20px;background:#2a5a2a;color:white;border:none;border-radius:4px;cursor:pointer;font-size:1em;margin-top:10px">🖨 Print</button>
+  <div class="footer">Poker Tournament Designer &nbsp;·&nbsp; Printed ${new Date().toLocaleDateString()}</div>
+  <br><button onclick="window.print()" style="display:block;margin:12px auto 0;padding:8px 24px;background:#2ecc71;color:#1a1a2e;border:none;border-radius:6px;cursor:pointer;font-size:1em;font-weight:700">🖨 Print / Save PDF</button>
   <script>setTimeout(() => window.print(), 400);</script>
   </body></html>`;
   
