@@ -1732,17 +1732,32 @@ function printSchedule(id) {
   const playMin = playLevels.reduce((s, l) => s + l.duration_minutes, 0);
   const breakMin = breakLevels.reduce((s, l) => s + l.duration_minutes, 0);
   const maxBB = playLevels.length > 0 ? playLevels[playLevels.length - 1].big_blind : 0;
+  
+  // Get rebuy settings from predictor inputs
+  const totalRebuys = parseInt($('#pred-rebuys')?.value) || 0;
+  const rebuyThroughLevel = parseInt($('#pred-rebuy-through')?.value) || 4;
+  const hasRebuys = totalRebuys > 0;
+  
   let cumMin = 0;
   let rowIndex = 0;
+  let rebuyEndInserted = false;
   
   const rows = sched.levels.map(lvl => {
+    let prefix = '';
+    // Insert "REBUYS END" marker after the last rebuy-eligible level
+    if (hasRebuys && !lvl.is_break && !rebuyEndInserted && lvl.level_number > rebuyThroughLevel) {
+      rebuyEndInserted = true;
+      prefix = `<tr class="rebuy-end-row"><td colspan="6">🔄 REBUYS END — No more re-entries after Level ${rebuyThroughLevel}</td></tr>`;
+    }
+    
     const start = cumMin;
     cumMin += lvl.duration_minutes;
     if (lvl.is_break) {
-      return `<tr class="break-row"><td colspan="6">☕ BREAK — ${lvl.duration_minutes} min <span class="break-time">(${formatTime(start)} → ${formatTime(cumMin)})</span></td></tr>`;
+      return prefix + `<tr class="break-row"><td colspan="6">☕ BREAK — ${lvl.duration_minutes} min <span class="break-time">(${formatTime(start)} → ${formatTime(cumMin)})</span></td></tr>`;
     }
     rowIndex++;
-    const stripe = rowIndex % 2 === 0 ? ' class="even"' : '';
+    const stripe = rowIndex % 2 === 0 ? ' even' : '';
+    const rebuyClass = hasRebuys && lvl.level_number <= rebuyThroughLevel ? ' rebuy-window' : '';
     // Color-code the level number based on blind pressure progression
     const pct = playLevels.indexOf(lvl) / Math.max(playLevels.length - 1, 1);
     const r = Math.round(46 + pct * 185);  // 2e → e3
@@ -1750,7 +1765,7 @@ function printSchedule(id) {
     const b = Math.round(113 - pct * 73);   // 71 → 3c
     const levelColor = `rgb(${r},${g},${b})`;
     
-    return `<tr${stripe}>
+    return prefix + `<tr class="${stripe}${rebuyClass}">
       <td class="lvl-cell"><span class="lvl-badge" style="background:${levelColor}">${lvl.level_number}</span></td>
       <td class="blinds-cell">${fmt(lvl.small_blind)} / ${fmt(lvl.big_blind)}${lvl.ante > 0 ? `<span class="ante"> + ${fmt(lvl.ante)}</span>` : ''}</td>
       <td>${lvl.duration_minutes} min</td>
@@ -1768,7 +1783,8 @@ function printSchedule(id) {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       padding: 12px 20px;
       color: #1a1a2e;
-      background: #fafbfc;
+      background: linear-gradient(170deg, #eef4fb 0%, #e4eef8 40%, #dde8f4 100%);
+      min-height: 100vh;
       font-size: 11px;
     }
     .header {
@@ -1824,6 +1840,16 @@ function printSchedule(id) {
       border-bottom: 1px solid #f0e6c0;
     }
     .break-time { font-weight: 400; font-size: 0.85em; opacity: 0.7; }
+    tr.rebuy-window td { border-left: 3px solid #f0c040; }
+    tr.rebuy-window td:first-child { border-left: 3px solid #f0c040; }
+    .rebuy-end-row td {
+      background: linear-gradient(90deg, #fce4e4 0%, #fdeaea 50%, #fce4e4 100%) !important;
+      text-align: center; font-weight: 600; color: #c0392b;
+      letter-spacing: 0.3px; font-size: 0.85em;
+      border-bottom: 2px solid #e74c3c;
+      border-top: 2px solid #e74c3c;
+      padding: 6px 10px;
+    }
     .footer {
       margin-top: 20px; font-size: 0.78em; color: #a0a8b0;
       text-align: center; padding-top: 12px;
