@@ -1760,8 +1760,9 @@ function printSchedule(id) {
   
   // Get rebuy settings — prefer schedule's saved value, fall back to UI input
   const totalRebuys = parseInt($('#pred-rebuys')?.value) || 0;
-  const rebuyThroughLevel = sched.rebuy_through_level > 0 ? sched.rebuy_through_level : (parseInt($('#pred-rebuy-through')?.value) || 4);
-  const hasRebuys = totalRebuys > 0;
+  const rebuyThroughLevel = sched.rebuy_through_level > 0 ? sched.rebuy_through_level : (parseInt($('#pred-rebuy-through')?.value) || 0);
+  // Show rebuy markers if schedule has a rebuy-through level set, even if expected rebuys is 0
+  const hasRebuys = rebuyThroughLevel > 0;
   
   let cumMin = 0;
   let rowIndex = 0;
