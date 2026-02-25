@@ -113,8 +113,8 @@ app.get('/api/blind-schedules', (req, res) => {
 
 // Create a blind schedule
 app.post('/api/blind-schedules', (req, res) => {
-  const { name, levels } = req.body;
-  const result = db.prepare('INSERT INTO blind_schedules (name) VALUES (?)').run(name);
+  const { name, levels, rebuy_through_level } = req.body;
+  const result = db.prepare('INSERT INTO blind_schedules (name, rebuy_through_level) VALUES (?, ?)').run(name, rebuy_through_level || 0);
   const id = result.lastInsertRowid;
   const insertLevel = db.prepare('INSERT INTO blind_levels (schedule_id, level_number, small_blind, big_blind, ante, duration_minutes, is_break, sort_order, after_round) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
   levels.forEach((lvl, idx) => {
@@ -125,8 +125,8 @@ app.post('/api/blind-schedules', (req, res) => {
 
 // Update a blind schedule
 app.put('/api/blind-schedules/:id', (req, res) => {
-  const { name, levels } = req.body;
-  db.prepare('UPDATE blind_schedules SET name = ? WHERE id = ?').run(name, req.params.id);
+  const { name, levels, rebuy_through_level } = req.body;
+  db.prepare('UPDATE blind_schedules SET name = ?, rebuy_through_level = ? WHERE id = ?').run(name, rebuy_through_level || 0, req.params.id);
   db.prepare('DELETE FROM blind_levels WHERE schedule_id = ?').run(req.params.id);
   const insertLevel = db.prepare('INSERT INTO blind_levels (schedule_id, level_number, small_blind, big_blind, ante, duration_minutes, is_break, sort_order, after_round) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
   levels.forEach((lvl, idx) => {

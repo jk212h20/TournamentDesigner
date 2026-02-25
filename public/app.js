@@ -1326,12 +1326,14 @@ $('#save-schedule-btn').addEventListener('click', async () => {
     after_round: l.is_break ? (l.after_round || 0) : 0
   }));
   
+  const rebuy_through_level = parseInt($('#pred-rebuy-through').value) || 0;
+  
   if (editingScheduleId) {
-    await api(`blind-schedules/${editingScheduleId}`, { method: 'PUT', body: { name, levels } });
+    await api(`blind-schedules/${editingScheduleId}`, { method: 'PUT', body: { name, levels, rebuy_through_level } });
     editingScheduleId = null;
     $('#save-schedule-btn').textContent = 'Save Schedule';
   } else {
-    await api('blind-schedules', { method: 'POST', body: { name, levels } });
+    await api('blind-schedules', { method: 'POST', body: { name, levels, rebuy_through_level } });
   }
   
   $('#schedule-name').value = '';
@@ -1415,11 +1417,16 @@ function editSchedule(id) {
     $('#default-round-length').value = mostCommon;
   }
   
-  // Set rebuy-through to the number of play levels if it exceeds current value
-  const numPlayLevels = currentLevels.filter(l => !l.is_break).length;
-  const currentRebuyThrough = parseInt($('#pred-rebuy-through').value) || 4;
-  if (currentRebuyThrough > numPlayLevels) {
-    $('#pred-rebuy-through').value = Math.min(numPlayLevels, 4);
+  // Load rebuy-through from the saved schedule
+  if (sched.rebuy_through_level > 0) {
+    $('#pred-rebuy-through').value = sched.rebuy_through_level;
+  } else {
+    // Clamp if exceeds current level count
+    const numPlayLevels = currentLevels.filter(l => !l.is_break).length;
+    const currentRebuyThrough = parseInt($('#pred-rebuy-through').value) || 4;
+    if (currentRebuyThrough > numPlayLevels) {
+      $('#pred-rebuy-through').value = Math.min(numPlayLevels, 4);
+    }
   }
   
   renderLevelsTable();
@@ -1446,7 +1453,7 @@ async function copySchedule(id) {
     is_break: l.is_break,
     after_round: l.after_round || 0
   }));
-  await api('blind-schedules', { method: 'POST', body: { name: newName, levels } });
+  await api('blind-schedules', { method: 'POST', body: { name: newName, levels, rebuy_through_level: sched.rebuy_through_level || 0 } });
   loadBlinds();
 }
 
@@ -1464,7 +1471,7 @@ async function renameSchedule(id) {
     is_break: l.is_break,
     after_round: l.after_round || 0
   }));
-  await api(`blind-schedules/${id}`, { method: 'PUT', body: { name: newName, levels } });
+  await api(`blind-schedules/${id}`, { method: 'PUT', body: { name: newName, levels, rebuy_through_level: sched.rebuy_through_level || 0 } });
   loadBlinds();
 }
 
@@ -1751,9 +1758,9 @@ function printSchedule(id) {
   const breakMin = breakLevels.reduce((s, l) => s + l.duration_minutes, 0);
   const maxBB = playLevels.length > 0 ? playLevels[playLevels.length - 1].big_blind : 0;
   
-  // Get rebuy settings from predictor inputs
+  // Get rebuy settings — prefer schedule's saved value, fall back to UI input
   const totalRebuys = parseInt($('#pred-rebuys')?.value) || 0;
-  const rebuyThroughLevel = parseInt($('#pred-rebuy-through')?.value) || 4;
+  const rebuyThroughLevel = sched.rebuy_through_level > 0 ? sched.rebuy_through_level : (parseInt($('#pred-rebuy-through')?.value) || 4);
   const hasRebuys = totalRebuys > 0;
   
   let cumMin = 0;

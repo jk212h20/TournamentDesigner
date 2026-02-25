@@ -100,6 +100,9 @@ try {
 try {
   db.exec(`ALTER TABLE blind_levels ADD COLUMN after_round INTEGER NOT NULL DEFAULT 0`);
 } catch(e) {}
+try {
+  db.exec(`ALTER TABLE blind_schedules ADD COLUMN rebuy_through_level INTEGER NOT NULL DEFAULT 0`);
+} catch(e) {}
 
 // Chip color map based on SLOWPLAY sets
 const CHIP_COLORS = {
